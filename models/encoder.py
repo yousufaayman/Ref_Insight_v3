@@ -1,12 +1,14 @@
 import torch
 import torch.nn as nn
 from config.config import Config
+from torchvision.models.video import mvit_v2_s, MViT_V2_S_Weights
+
 
 class VideoEncoder(nn.Module):
     def __init__(self, pretrained=True):
         super(VideoEncoder, self).__init__()
         
-        weights = 'KINETICS400_V2' if pretrained else None
+        weights = MViT_V2_S_Weights.DEFAULT
 
         
         if Config.MODEL_VARIANT == 'small':

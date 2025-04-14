@@ -198,30 +198,39 @@ class SoccerNetMVFoulDataset(Dataset):
 
 def create_data_loaders(config):
     
+    train_num_views = 2  
+    eval_num_views = None  
+    
+    
+    if hasattr(config, 'NUM_VIEWS'):
+        train_num_views = config.NUM_VIEWS
+        eval_num_views = config.NUM_VIEWS
+    
+    
     train_dataset = SoccerNetMVFoulDataset(
-        root_dir=config.DATA_ROOT,  
+        root_dir=config.DATA_ROOT,
         split='train',
         frames=config.FRAMES,
         resolution=config.RESOLUTION,
-        num_views=config.NUM_VIEWS
+        num_views=train_num_views
     )
     
     
     val_dataset = SoccerNetMVFoulDataset(
-        root_dir=config.DATA_ROOT,  
+        root_dir=config.DATA_ROOT,
         split='val',
         frames=config.FRAMES,
         resolution=config.RESOLUTION,
-        num_views=config.NUM_VIEWS
+        num_views=eval_num_views  
     )
     
     
     test_dataset = SoccerNetMVFoulDataset(
-        root_dir=config.DATA_ROOT,  
+        root_dir=config.DATA_ROOT,
         split='test',
         frames=config.FRAMES,
         resolution=config.RESOLUTION,
-        num_views=config.NUM_VIEWS
+        num_views=eval_num_views  
     )
     
     

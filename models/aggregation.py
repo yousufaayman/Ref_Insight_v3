@@ -29,28 +29,33 @@ class MaxPoolAggregation(nn.Module):
 
 
 class AttentionAggregation(nn.Module):
-    
     def __init__(self, feature_dim):
         super(AttentionAggregation, self).__init__()
         self.W = nn.Parameter(torch.randn(feature_dim, feature_dim))
-        nn.init.orthogonal_(self.W)  
+        
+        nn.init.orthogonal_(self.W)
         
     def forward(self, features):
         
-        transformed = features @ self.W
+        transformed = features @ self.W  
         
         
-        S = transformed @ transformed.transpose(1, 2)
+        S = transformed @ transformed.transpose(1, 2)  
         
         
         S = F.relu(S)
-        N = S / (S.sum(dim=(1, 2), keepdim=True) + 1e-8)  
+        
+        
+        N = S / (S.sum(dim=(1, 2), keepdim=True) + 1e-8)
         
         
         attention = N.sum(dim=2)  
         
         
-        weighted_features = features * attention.unsqueeze(2)  
-        aggregated = weighted_features.sum(dim=1)  
+        attention = attention / (attention.sum(dim=1, keepdim=True) + 1e-8)
+        
+        
+        weighted_features = features * attention.unsqueeze(2)
+        aggregated = weighted_features.sum(dim=1)
         
         return aggregated, attention

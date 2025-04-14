@@ -198,30 +198,98 @@ class SoccerNetMVFoulDataset(Dataset):
 
 
 def create_data_loaders(config):
-    loaders = {}
     
-    for split in ['train', 'val', 'test']:
-        dataset = SoccerNetMVFoulDataset(
-            root_dir=config.DATA_ROOT,
-            split=split,
-            frames=config.FRAMES,
-            resolution=config.RESOLUTION,
-            num_views=None if split != 'train' else 2,  
-            temporal_shift_range=config.TEMPORAL_SHIFT_RANGE if split == 'train' else 0
-        )
+    train_transform = transforms.Compose([
         
-        loaders[split] = DataLoader(
-            dataset,
-            batch_size=config.BATCH_SIZE if split == 'train' else 1,
-            shuffle=(split == 'train'),
-            num_workers=config.NUM_WORKERS,
-            pin_memory=True
-        )
+        transforms.RandomResizedCrop(config.RESOLUTION, scale=(0.8, 1.0)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
         
         
-        if split == 'train':
-            offense_weights, action_weights = dataset.get_class_weights()
-            loaders['offense_weights'] = offense_weights
-            loaders['action_weights'] = action_weights
+        
+    ])
     
-    return loaders
+    
+    val_transform = transforms.Compose([
+        transforms.Resize(config.RESOLUTION),
+        transforms.CenterCrop(config.RESOLUTION),
+    ])
+    
+    
+    train_dataset = SoccerNetMVFoulDataset(
+        root=config.DATA_ROOT,
+        split='train',
+        frames=config.FRAMES,
+        frame_strategy='balanced_around_foul',  
+        transform=train_transform,
+        temporal_shift=True,  
+        resolution=config.RESOLUTION
+    )
+    
+    val_dataset = SoccerNetMVFoulDataset(
+        root=config.DATA_ROOT,
+        split='val',
+        frames=config.FRAMES,
+        frame_strategy='balanced_around_foul',
+        transform=val_transform,
+        temporal_shift=False,  
+        resolution=config.RESOLUTION
+    )
+    
+    test_dataset = SoccerNetMVFoulDataset(
+        root=config.DATA_ROOT,
+        split='test',
+        frames=config.FRAMES,
+        frame_strategy='balanced_around_foul',
+        transform=val_transform,
+        temporal_shift=False,  
+        resolution=config.RESOLUTION
+    )
+    
+    
+    offense_counts = torch.zeros(4)
+    action_counts = torch.zeros(8)
+    
+    for _, action_target, offense_target, _ in train_dataset:
+        action_idx = torch.argmax(action_target).item()
+        offense_idx = torch.argmax(offense_target).item()
+        action_counts[action_idx] += 1
+        offense_counts[offense_idx] += 1
+    
+    
+    action_weights = 1.0 / (action_counts + 1e-6)  
+    offense_weights = 1.0 / (offense_counts + 1e-6)
+    
+    
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=config.BATCH_SIZE,
+        shuffle=True,
+        num_workers=config.NUM_WORKERS,
+        pin_memory=True,
+        drop_last=True
+    )
+    
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=1,  
+        shuffle=False,
+        num_workers=config.NUM_WORKERS,
+        pin_memory=True
+    )
+    
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=1,  
+        shuffle=False,
+        num_workers=config.NUM_WORKERS,
+        pin_memory=True
+    )
+    
+    return {
+        'train': train_loader,
+        'val': val_loader,
+        'test': test_loader,
+        'offense_weights': offense_weights,
+        'action_weights': action_weights
+    }

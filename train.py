@@ -12,15 +12,20 @@ from data.dataset import create_data_loaders
 from models.vars import VARS
 from utils.metrics import calculate_metrics, log_metrics
 
-def create_loss_functions(offense_weights, action_weights, device):    
+def create_loss_functions(offense_weights, action_weights, device):
+    
     if action_weights is not None and not torch.isnan(action_weights).any() and not (action_weights == 0).all():
         
         valid_indices = torch.where(action_weights > 0)[0]
         if len(valid_indices) > 0:
             valid_weights = action_weights[valid_indices]
             valid_weights = valid_weights / valid_weights.sum()
-            print(f"Using weighted loss for actions with weights: {valid_weights}")
             
+            
+            valid_weights = torch.sqrt(valid_weights)
+            valid_weights = valid_weights / valid_weights.sum()
+            
+            print(f"Using weighted loss for actions with weights: {valid_weights}")
             
             full_weights = torch.ones(action_weights.size(0), device=device)
             full_weights[valid_indices] = valid_weights
@@ -34,6 +39,13 @@ def create_loss_functions(offense_weights, action_weights, device):
     
     
     if offense_weights is not None and not torch.isnan(offense_weights).any() and not (offense_weights == 0).all():
+        
+        offense_weights = offense_weights / offense_weights.sum()
+        
+        
+        offense_weights = torch.sqrt(offense_weights)
+        offense_weights = offense_weights / offense_weights.sum()
+        
         print(f"Using weighted loss for offense with weights: {offense_weights}")
         offense_criterion = nn.CrossEntropyLoss(weight=offense_weights)
     else:
@@ -43,29 +55,29 @@ def create_loss_functions(offense_weights, action_weights, device):
     return action_criterion, offense_criterion
 
 def save_checkpoint(path, epoch, model, optimizer, scheduler, train_loss, val_loss, train_metrics, val_metrics, config):    
-    # Convert numpy values to Python native types
+    
     processed_train_metrics = {}
     processed_val_metrics = {}
     
     for key, value in train_metrics.items():
-        if hasattr(value, 'item'):  # For tensors or numpy values
+        if hasattr(value, 'item'):  
             processed_train_metrics[key] = value.item() if hasattr(value, 'item') else float(value)
         else:
             processed_train_metrics[key] = value
             
     for key, value in val_metrics.items():
-        if hasattr(value, 'item'):  # For tensors or numpy values
+        if hasattr(value, 'item'):  
             processed_val_metrics[key] = value.item() if hasattr(value, 'item') else float(value)
         else:
             processed_val_metrics[key] = value
     
-    # Get serializable config
+    
     serializable_config = {}
     for k, v in config.__dict__.items():
         if not k.startswith('__') and not callable(v) and not isinstance(v, staticmethod):
             serializable_config[k] = v
     
-    # Create checkpoint dictionary
+    
     checkpoint = {
         'epoch': epoch + 1,
         'model_state_dict': model.state_dict(),
@@ -78,14 +90,14 @@ def save_checkpoint(path, epoch, model, optimizer, scheduler, train_loss, val_lo
         'config': serializable_config
     }
     
-    # Save the checkpoint
+    
     try:
         torch.save(checkpoint, path)
         print(f"Model saved to {path}")
         return True
     except Exception as e:
         print(f"Error saving checkpoint: {e}")
-        # Try saving with just the model state dict as a fallback
+        
         try:
             torch.save({
                 'model_state_dict': model.state_dict(),
@@ -115,6 +127,22 @@ def parse_args():
     return parser.parse_args()
 
 def train_one_epoch(model, train_loader, optimizer, criterions, device, epoch):
+    """
+    Train the model for one epoch with improved training strategy
+    
+    Args:
+        model: the VARS model
+        train_loader: data loader for training data
+        optimizer: optimizer
+        criterions: loss functions for foul and offense classification
+        device: torch device
+        epoch: current epoch number
+    
+    Returns:
+        epoch_loss: average loss for the epoch
+        epoch_metrics: evaluation metrics for the epoch
+        epoch_time: time taken for the epoch
+    """
     model.train()
     
     
@@ -144,8 +172,8 @@ def train_one_epoch(model, train_loader, optimizer, criterions, device, epoch):
         foul_logits = outputs['foul_logits']
         offense_logits = outputs['offense_logits']
         
-        
         try:
+            
             action_loss = action_criterion(foul_logits, action_targets)
             offense_loss = offense_criterion(offense_logits, offense_targets)
             
@@ -158,16 +186,30 @@ def train_one_epoch(model, train_loader, optimizer, criterions, device, epoch):
                 offense_loss = torch.tensor(0.0, device=device)
                 print(f"Warning: NaN/Inf in offense_loss at batch {batch_idx}")
             
-            total_loss = action_loss + offense_loss
+            
+            
+            
+            if epoch < 5:
+                action_weight = 1.5  
+                offense_weight = 0.5
+            else:
+                action_weight = 1.0
+                offense_weight = 1.0
+                
+            
+            total_loss = action_weight * action_loss + offense_weight * offense_loss
             
             
             if not torch.isnan(total_loss) and not torch.isinf(total_loss) and total_loss > 0:
                 
                 optimizer.zero_grad()
+                
+                
                 total_loss.backward()
                 
                 
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                
                 
                 optimizer.step()
                 
@@ -367,7 +409,7 @@ def main():
                 train_loss, val_loss, train_metrics, val_metrics, Config
             )
 
-        # Always save latest model
+        
         latest_path = os.path.join(
             Config.CHECKPOINT_DIR, 
             Config.EXPERIMENT_NAME, 

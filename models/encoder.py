@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from pytorchvideo.models.hub import mvit_v2_b  
 from config.config import Config
 
 class VideoEncoder(nn.Module):
@@ -8,17 +7,16 @@ class VideoEncoder(nn.Module):
         super(VideoEncoder, self).__init__()
         
         if Config.MODEL_VARIANT == 'small':
-            from pytorchvideo.models.hub import mvit_v2_s
-            self.mvit = mvit_v2_s(pretrained=pretrained)
+            from torchvision.models.video import mvit_v2_s            self.mvit = mvit_v2_s(pretrained=pretrained)
         elif Config.MODEL_VARIANT == 'base':
-            from pytorchvideo.models.hub import mvit_v2_b
+            from torchvision.models.video import mvit_v2_b
             self.mvit = mvit_v2_b(pretrained=pretrained)
         elif Config.MODEL_VARIANT == 'large':
-            from pytorchvideo.models.hub import mvit_v2_l
+            from torchvision.models.video import mvit_v2_l
             self.mvit = mvit_v2_l(pretrained=pretrained)
         else:
             
-            from pytorchvideo.models.hub import mvit_v2_b
+            from torchvision.models.video import mvit_v2_s
             self.mvit = mvit_v2_b(pretrained=pretrained)
             print(f"Unknown model variant: {Config.MODEL_VARIANT}, using 'base' as default.")
         

@@ -6,18 +6,22 @@ class VideoEncoder(nn.Module):
     def __init__(self, pretrained=True):
         super(VideoEncoder, self).__init__()
         
+        weights = 'KINETICS400_V2' if pretrained else None
+
+        
         if Config.MODEL_VARIANT == 'small':
-            from torchvision.models.video import mvit_v2_s            self.mvit = mvit_v2_s(pretrained=pretrained)
+            from torchvision.models.video import mvit_v2_s            
+            self.mvit = mvit_v2_s(weights=weights)
         elif Config.MODEL_VARIANT == 'base':
             from torchvision.models.video import mvit_v2_b
-            self.mvit = mvit_v2_b(pretrained=pretrained)
+            self.mvit = mvit_v2_b(weights=weights)
         elif Config.MODEL_VARIANT == 'large':
             from torchvision.models.video import mvit_v2_l
-            self.mvit = mvit_v2_l(pretrained=pretrained)
+            self.mvit = mvit_v2_l(weights=weights)
         else:
             
             from torchvision.models.video import mvit_v2_s
-            self.mvit = mvit_v2_b(pretrained=pretrained)
+            self.mvit = mvit_v2_b(weights=weights)
             print(f"Unknown model variant: {Config.MODEL_VARIANT}, using 'base' as default.")
         
         

@@ -97,19 +97,18 @@ class SoccerNetMVFoulDataset(Dataset):
             
             frames = video_tensor[start_frame:end_frame]
             
+            
             if frames.shape[0] < self.frames:
                 
-                pad_left = (self.frames - frames.shape[0]) // 2
-                pad_right = self.frames - frames.shape[0] - pad_left
+                pad_size = self.frames - frames.shape[0]
+                if pad_size > 0:
+                    if frames.shape[0] > 0:  
+                        padding = frames[[0]].repeat(pad_size, 1, 1, 1)
+                        frames = torch.cat([padding, frames], dim=0)
+                    else:
+                        
+                        frames = torch.zeros(self.frames, 720, 1280, 3, dtype=torch.uint8)
                 
-                if pad_left > 0:
-                    left_padding = frames[[0]].repeat(pad_left, 1, 1, 1)
-                    frames = torch.cat([left_padding, frames], dim=0)
-                
-                if pad_right > 0:
-                    right_padding = frames[[-1]].repeat(pad_right, 1, 1, 1)
-                    frames = torch.cat([frames, right_padding], dim=0)
-            
             
             frames = frames[:self.frames]
             

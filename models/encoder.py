@@ -1,39 +1,32 @@
 import torch
 import torch.nn as nn
-from config.config import Config
 from torchvision.models.video import mvit_v2_s, MViT_V2_S_Weights
-
+from config.config import Config
 
 class VideoEncoder(nn.Module):
     def __init__(self, pretrained=True):
         super(VideoEncoder, self).__init__()
         
+        
         weights = MViT_V2_S_Weights.DEFAULT
-
         
-        if Config.MODEL_VARIANT == 'small':
-            from torchvision.models.video import mvit_v2_s            
-            self.mvit = mvit_v2_s(weights=weights)
-        elif Config.MODEL_VARIANT == 'base':
-            from torchvision.models.video import mvit_v2_b
-            self.mvit = mvit_v2_b(weights=weights)
-        elif Config.MODEL_VARIANT == 'large':
-            from torchvision.models.video import mvit_v2_l
-            self.mvit = mvit_v2_l(weights=weights)
-        else:
+        self.mvit = mvit_v2_s(weights=weights)
+        self.feature_dim = 768  
+        
+        if isinstance(self.mvit.head, nn.Sequential):
             
-            from torchvision.models.video import mvit_v2_s
-            self.mvit = mvit_v2_b(weights=weights)
-            print(f"Unknown model variant: {Config.MODEL_VARIANT}, using 'base' as default.")
+            head_layers = list(self.mvit.head.children())
+            if len(head_layers) >= 2 and isinstance(head_layers[-1], nn.Linear):
+                
+                self.feature_dim = head_layers[-1].in_features
+                
+                new_head = nn.Sequential(*head_layers[:-1])
+                self.mvit.head = new_head
         
-        
-        num_features = self.mvit.head.proj.in_features
-        self.feature_dim = num_features
-        self.mvit.head.proj = nn.Identity()  
-        
-        print(f"Initialized VideoEncoder with MViTv2-{Config.MODEL_VARIANT}, feature dimension: {self.feature_dim}")
+        print(f"Initialized VideoEncoder with MViTv2-small, feature dimension: {self.feature_dim}")
         
     def forward(self, x):
+
         batch_size, num_views = x.shape[0], x.shape[1]
         
         
@@ -46,3 +39,6 @@ class VideoEncoder(nn.Module):
         features = features.view(batch_size, num_views, -1)  
         
         return features
+    
+    
+    

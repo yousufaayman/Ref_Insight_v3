@@ -11,12 +11,12 @@ class Config:
     
     
     PRETRAINED = True  
-    FEATURE_DIM = 1024  
-    MODEL_VARIANT = "base"  
+    MODEL_VARIANT = "small"  
+    FEATURE_DIM = 768  
     
     
-    BATCH_SIZE = 4  
-    LEARNING_RATE = 3e-5  
+    BATCH_SIZE = 6  
+    LEARNING_RATE = 5e-5  
     WEIGHT_DECAY = 1e-4  
     LR_STEP_SIZE = 3  
     LR_GAMMA = 0.3  
@@ -27,7 +27,7 @@ class Config:
     NUM_WORKERS = 4  
     
     
-    EXPERIMENT_NAME = f"VARS_MViTv2Base_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    EXPERIMENT_NAME = f"VARS_MViTv2Small_K700_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     CHECKPOINT_DIR = "checkpoints"
     LOG_DIR = "logs"
     

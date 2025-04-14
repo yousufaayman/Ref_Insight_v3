@@ -22,8 +22,6 @@ def parse_args():
                       choices=['mean', 'max', 'attention'], help='Pooling method')
     parser.add_argument('--frames', type=int, default=Config.FRAMES, help='Number of frames per clip')
     parser.add_argument('--resolution', type=int, default=Config.RESOLUTION, help='Frame resolution')
-    parser.add_argument('--model_variant', type=str, default=Config.MODEL_VARIANT, 
-                      choices=['small', 'base', 'large'], help='MViTv2 model variant')
     parser.add_argument('--pretrained', action='store_true', default=True, 
                        help='Use pretrained MViTv2 weights')
     parser.add_argument('--no_pretrained', dest='pretrained', action='store_false',
@@ -162,16 +160,7 @@ def main():
         Config.FRAMES = args.frames
     if args.resolution:
         Config.RESOLUTION = args.resolution
-    if args.model_variant:
-        Config.MODEL_VARIANT = args.model_variant
-        
-        if Config.MODEL_VARIANT == 'small':
-            Config.FEATURE_DIM = 768
-        elif Config.MODEL_VARIANT == 'base':
-            Config.FEATURE_DIM = 1024
-        elif Config.MODEL_VARIANT == 'large':
-            Config.FEATURE_DIM = 1536
-    
+
     Config.create_dirs()
     
     
@@ -203,7 +192,7 @@ def main():
     model = model.to(device)
     
     
-    print(f"Model created with MViTv2-{Config.MODEL_VARIANT} backbone and {args.pooling} pooling")
+    print(f"Model created with MViTv2-small backbone and {args.pooling} pooling")
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total parameters: {total_params:,}")

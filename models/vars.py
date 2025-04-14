@@ -7,15 +7,16 @@ from models.classifier import FoulClassifier, OffenseClassifier
 from config.config import Config
 
 class VARS(nn.Module):
+
+    
     def __init__(self, num_foul_types=8, num_offense_categories=4, 
                  pretrained=True, pooling_type='attention'):
+
         super(VARS, self).__init__()
         
         
         self.encoder = VideoEncoder(pretrained=pretrained)
         feature_dim = self.encoder.feature_dim
-        
-        print(f"Initialized MViTv2-{Config.MODEL_VARIANT.capitalize()} encoder with feature dimension: {feature_dim}")
         
         
         if pooling_type == 'mean':
@@ -30,6 +31,7 @@ class VARS(nn.Module):
         self.offense_classifier = OffenseClassifier(feature_dim, num_offense_categories)
     
     def forward(self, x):
+
         
         features = self.encoder(x)  
         

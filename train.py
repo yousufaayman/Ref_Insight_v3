@@ -12,6 +12,91 @@ from data.dataset import create_data_loaders
 from models.vars import VARS
 from utils.metrics import calculate_metrics, log_metrics
 
+def create_loss_functions(offense_weights, action_weights, device):    
+    if action_weights is not None and not torch.isnan(action_weights).any() and not (action_weights == 0).all():
+        
+        valid_indices = torch.where(action_weights > 0)[0]
+        if len(valid_indices) > 0:
+            valid_weights = action_weights[valid_indices]
+            valid_weights = valid_weights / valid_weights.sum()
+            print(f"Using weighted loss for actions with weights: {valid_weights}")
+            
+            
+            full_weights = torch.ones(action_weights.size(0), device=device)
+            full_weights[valid_indices] = valid_weights
+            action_criterion = nn.CrossEntropyLoss(weight=full_weights)
+        else:
+            print("Warning: No valid action weights found, using unweighted loss")
+            action_criterion = nn.CrossEntropyLoss()
+    else:
+        print("Warning: Invalid action weights, using unweighted loss")
+        action_criterion = nn.CrossEntropyLoss()
+    
+    
+    if offense_weights is not None and not torch.isnan(offense_weights).any() and not (offense_weights == 0).all():
+        print(f"Using weighted loss for offense with weights: {offense_weights}")
+        offense_criterion = nn.CrossEntropyLoss(weight=offense_weights)
+    else:
+        print("Warning: Invalid offense weights, using unweighted loss")
+        offense_criterion = nn.CrossEntropyLoss()
+    
+    return action_criterion, offense_criterion
+
+def save_checkpoint(path, epoch, model, optimizer, scheduler, train_loss, val_loss, train_metrics, val_metrics, config):    
+    # Convert numpy values to Python native types
+    processed_train_metrics = {}
+    processed_val_metrics = {}
+    
+    for key, value in train_metrics.items():
+        if hasattr(value, 'item'):  # For tensors or numpy values
+            processed_train_metrics[key] = value.item() if hasattr(value, 'item') else float(value)
+        else:
+            processed_train_metrics[key] = value
+            
+    for key, value in val_metrics.items():
+        if hasattr(value, 'item'):  # For tensors or numpy values
+            processed_val_metrics[key] = value.item() if hasattr(value, 'item') else float(value)
+        else:
+            processed_val_metrics[key] = value
+    
+    # Get serializable config
+    serializable_config = {}
+    for k, v in config.__dict__.items():
+        if not k.startswith('__') and not callable(v) and not isinstance(v, staticmethod):
+            serializable_config[k] = v
+    
+    # Create checkpoint dictionary
+    checkpoint = {
+        'epoch': epoch + 1,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+        'train_loss': train_loss,
+        'val_loss': val_loss,
+        'train_metrics': processed_train_metrics,
+        'val_metrics': processed_val_metrics,
+        'config': serializable_config
+    }
+    
+    # Save the checkpoint
+    try:
+        torch.save(checkpoint, path)
+        print(f"Model saved to {path}")
+        return True
+    except Exception as e:
+        print(f"Error saving checkpoint: {e}")
+        # Try saving with just the model state dict as a fallback
+        try:
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'epoch': epoch + 1,
+            }, path)
+            print(f"Fallback: Model state dict saved to {path}")
+            return True
+        except Exception as e2:
+            print(f"Critical error: Could not save model: {e2}")
+            return False
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Train VARS model')
     parser.add_argument('--data_root', type=str, help='Path to dataset root')
@@ -30,7 +115,6 @@ def parse_args():
     return parser.parse_args()
 
 def train_one_epoch(model, train_loader, optimizer, criterions, device, epoch):
-    """Train model for one epoch"""
     model.train()
     
     
@@ -46,6 +130,7 @@ def train_one_epoch(model, train_loader, optimizer, criterions, device, epoch):
         'combined_balanced_accuracy': 0
     }
     
+    valid_batches = 0
     start_time = time.time()
     
     for batch_idx, batch in enumerate(train_loader):
@@ -60,37 +145,64 @@ def train_one_epoch(model, train_loader, optimizer, criterions, device, epoch):
         offense_logits = outputs['offense_logits']
         
         
-        action_loss = action_criterion(foul_logits, action_targets)
-        offense_loss = offense_criterion(offense_logits, offense_targets)
-        total_loss = action_loss + offense_loss
+        try:
+            action_loss = action_criterion(foul_logits, action_targets)
+            offense_loss = offense_criterion(offense_logits, offense_targets)
+            
+            
+            if torch.isnan(action_loss) or torch.isinf(action_loss):
+                action_loss = torch.tensor(0.0, device=device)
+                print(f"Warning: NaN/Inf in action_loss at batch {batch_idx}")
+            
+            if torch.isnan(offense_loss) or torch.isinf(offense_loss):
+                offense_loss = torch.tensor(0.0, device=device)
+                print(f"Warning: NaN/Inf in offense_loss at batch {batch_idx}")
+            
+            total_loss = action_loss + offense_loss
+            
+            
+            if not torch.isnan(total_loss) and not torch.isinf(total_loss) and total_loss > 0:
+                
+                optimizer.zero_grad()
+                total_loss.backward()
+                
+                
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                
+                optimizer.step()
+                
+                
+                batch_metrics = calculate_metrics(foul_logits, action_targets, offense_logits, offense_targets)
+                for key in epoch_metrics:
+                    epoch_metrics[key] += batch_metrics[key]
+                
+                epoch_loss += total_loss.item()
+                valid_batches += 1
+                
+                
+                if (batch_idx + 1) % 10 == 0:
+                    print(f"Epoch {epoch+1} | Batch {batch_idx+1}/{len(train_loader)} | "
+                          f"Loss: {total_loss.item():.4f} | "
+                          f"Foul Acc: {batch_metrics['foul_accuracy']:.4f} | "
+                          f"Offense Acc: {batch_metrics['offense_accuracy']:.4f}")
+            else:
+                if (batch_idx + 1) % 10 == 0:
+                    print(f"Epoch {epoch+1} | Batch {batch_idx+1}/{len(train_loader)} | "
+                          f"Loss: NaN/Inf (skipped)")
         
-        
-        optimizer.zero_grad()
-        total_loss.backward()
-        
-        
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        
-        optimizer.step()
-        
-        
-        batch_metrics = calculate_metrics(foul_logits, action_targets, offense_logits, offense_targets)
+        except Exception as e:
+            print(f"Error in batch {batch_idx}: {e}")
+            continue
+    
+    
+    if valid_batches > 0:
+        epoch_loss /= valid_batches
         for key in epoch_metrics:
-            epoch_metrics[key] += batch_metrics[key]
-        
-        epoch_loss += total_loss.item()
-        
-        
-        if (batch_idx + 1) % 10 == 0:
-            print(f"Epoch {epoch+1} | Batch {batch_idx+1}/{len(train_loader)} | "
-                  f"Loss: {total_loss.item():.4f} | "
-                  f"Foul Acc: {batch_metrics['foul_accuracy']:.4f} | "
-                  f"Offense Acc: {batch_metrics['offense_accuracy']:.4f}")
-    
-    
-    epoch_loss /= len(train_loader)
-    for key in epoch_metrics:
-        epoch_metrics[key] /= len(train_loader)
+            epoch_metrics[key] /= valid_batches
+    else:
+        epoch_loss = float('nan')
+        for key in epoch_metrics:
+            epoch_metrics[key] = 0
     
     epoch_time = time.time() - start_time
     
@@ -198,15 +310,8 @@ def main():
     print(f"Total parameters: {total_params:,}")
     print(f"Trainable parameters: {trainable_params:,}")
     
-    
-    if offense_weights is not None and action_weights is not None:
-        action_criterion = nn.CrossEntropyLoss(weight=action_weights)
-        offense_criterion = nn.CrossEntropyLoss(weight=offense_weights)
-    else:
-        action_criterion = nn.CrossEntropyLoss()
-        offense_criterion = nn.CrossEntropyLoss()
-    
-    criterions = (action_criterion, offense_criterion)
+
+    criterions = create_loss_functions(offense_weights, action_weights, device)
     
     optimizer = optim.AdamW(model.parameters(), lr=Config.LEARNING_RATE, weight_decay=Config.WEIGHT_DECAY)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=Config.LR_STEP_SIZE, gamma=Config.LR_GAMMA)
@@ -249,7 +354,6 @@ def main():
         for key, value in val_metrics.items():
             writer.add_scalar(f'Val/{key}', value, epoch)
         
-        
         val_combined_acc = val_metrics['combined_accuracy']
         if val_combined_acc > best_val_acc:
             best_val_acc = val_combined_acc
@@ -258,36 +362,21 @@ def main():
                 Config.EXPERIMENT_NAME, 
                 f"best_model_epoch{epoch+1}_acc{val_combined_acc:.4f}.pth"
             )
-            torch.save({
-                'epoch': epoch + 1,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'train_loss': train_loss,
-                'val_loss': val_loss,
-                'train_metrics': train_metrics,
-                'val_metrics': val_metrics,
-                'config': {k: v for k, v in vars(Config).items() if not k.startswith('__')}
-            }, checkpoint_path)
-            print(f"Model saved to {checkpoint_path}")
-        
-        
+            save_checkpoint(
+                checkpoint_path, epoch, model, optimizer, scheduler,
+                train_loss, val_loss, train_metrics, val_metrics, Config
+            )
+
+        # Always save latest model
         latest_path = os.path.join(
             Config.CHECKPOINT_DIR, 
             Config.EXPERIMENT_NAME, 
             "latest_model.pth"
         )
-        torch.save({
-            'epoch': epoch + 1,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
-            'train_loss': train_loss,
-            'val_loss': val_loss,
-            'train_metrics': train_metrics,
-            'val_metrics': val_metrics,
-            'config': {k: v for k, v in vars(Config).items() if not k.startswith('__')}
-        }, latest_path)
+        save_checkpoint(
+            latest_path, epoch, model, optimizer, scheduler,
+            train_loss, val_loss, train_metrics, val_metrics, Config
+        )
         
         print(f"Latest model saved to {latest_path}")
         print("-" * 80)

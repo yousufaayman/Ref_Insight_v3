@@ -55,10 +55,53 @@ class SoccerNetMVFoulDataset(Dataset):
     def __len__(self):
         return len(self.video_paths)
     
+    
     def get_class_weights(self):
+        """Return weights for weighted loss calculation with proper handling of edge cases"""
         if self.split == 'challenge':
             return None, None
-        return self.offense_severity_weights, self.action_weights
+        
+        
+        offense_distribution = self.offense_severity_distribution.clone()
+        
+        
+        min_count = 1.0  
+        offense_distribution = torch.clamp(offense_distribution, min=min_count)
+        
+        
+        offense_weights = 1.0 / offense_distribution
+        
+        
+        if offense_weights.sum() > 0:
+            offense_weights = offense_weights / offense_weights.sum()
+        else:
+            offense_weights = torch.ones_like(offense_weights) / len(offense_weights)
+        
+        
+        action_distribution = self.action_distribution.clone()
+        
+        
+        action_distribution = torch.clamp(action_distribution, min=min_count)
+        
+        
+        action_weights = 1.0 / action_distribution
+        
+        
+        if action_weights.sum() > 0:
+            action_weights = action_weights / action_weights.sum()
+        else:
+            action_weights = torch.ones_like(action_weights) / len(action_weights)
+        
+        
+        if torch.isnan(offense_weights).any():
+            print("Warning: NaN values found in offense_weights, using uniform weights")
+            offense_weights = torch.ones_like(offense_weights) / len(offense_weights)
+        
+        if torch.isnan(action_weights).any():
+            print("Warning: NaN values found in action_weights, using uniform weights")
+            action_weights = torch.ones_like(action_weights) / len(action_weights)
+        
+        return offense_weights, action_weights
     
     def __getitem__(self, index):
         videos = []

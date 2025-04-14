@@ -28,13 +28,28 @@ def calculate_balanced_accuracy(outputs, targets):
     y_pred = pred_indices.cpu().numpy()
     
     
-    cm = confusion_matrix(y_true, y_pred)
+    unique_classes = np.unique(np.concatenate([y_true, y_pred]))
     
+    try:
+        
+        cm = confusion_matrix(y_true, y_pred, labels=unique_classes)
+        
+        
+        per_class_acc = np.zeros(len(unique_classes))
+        for i, cls in enumerate(unique_classes):
+            
+            indices = np.where(y_true == cls)[0]
+            if len(indices) > 0:
+                
+                per_class_acc[i] = np.mean(y_pred[indices] == cls)
+            
+        
+        return np.mean(per_class_acc)
     
-    per_class_acc = cm.diagonal() / (cm.sum(axis=1) + 1e-8)
-    
-    
-    return np.mean(per_class_acc)
+    except Exception as e:
+        print(f"Warning in balanced accuracy calculation: {e}")
+        
+        return np.mean(y_pred == y_true)
 
 
 def calculate_metrics(foul_outputs, foul_targets, offense_outputs, offense_targets):

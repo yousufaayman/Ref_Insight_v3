@@ -196,69 +196,36 @@ class SoccerNetMVFoulDataset(Dataset):
                 'action_id': self.included_action_ids[index]
             }
 
-
 def create_data_loaders(config):
     
-    train_transform = transforms.Compose([
-        
-        transforms.RandomResizedCrop(config.RESOLUTION, scale=(0.8, 1.0)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3),
-        
-        
-        
-    ])
-    
-    
-    val_transform = transforms.Compose([
-        transforms.Resize(config.RESOLUTION),
-        transforms.CenterCrop(config.RESOLUTION),
-    ])
-    
-    
     train_dataset = SoccerNetMVFoulDataset(
-        root=config.DATA_ROOT,
+        root_dir=config.DATA_ROOT,  
         split='train',
         frames=config.FRAMES,
-        frame_strategy='balanced_around_foul',  
-        transform=train_transform,
-        temporal_shift=True,  
-        resolution=config.RESOLUTION
+        resolution=config.RESOLUTION,
+        num_views=config.NUM_VIEWS
     )
+    
     
     val_dataset = SoccerNetMVFoulDataset(
-        root=config.DATA_ROOT,
+        root_dir=config.DATA_ROOT,  
         split='val',
         frames=config.FRAMES,
-        frame_strategy='balanced_around_foul',
-        transform=val_transform,
-        temporal_shift=False,  
-        resolution=config.RESOLUTION
+        resolution=config.RESOLUTION,
+        num_views=config.NUM_VIEWS
     )
+    
     
     test_dataset = SoccerNetMVFoulDataset(
-        root=config.DATA_ROOT,
+        root_dir=config.DATA_ROOT,  
         split='test',
         frames=config.FRAMES,
-        frame_strategy='balanced_around_foul',
-        transform=val_transform,
-        temporal_shift=False,  
-        resolution=config.RESOLUTION
+        resolution=config.RESOLUTION,
+        num_views=config.NUM_VIEWS
     )
     
     
-    offense_counts = torch.zeros(4)
-    action_counts = torch.zeros(8)
-    
-    for _, action_target, offense_target, _ in train_dataset:
-        action_idx = torch.argmax(action_target).item()
-        offense_idx = torch.argmax(offense_target).item()
-        action_counts[action_idx] += 1
-        offense_counts[offense_idx] += 1
-    
-    
-    action_weights = 1.0 / (action_counts + 1e-6)  
-    offense_weights = 1.0 / (offense_counts + 1e-6)
+    offense_weights, action_weights = train_dataset.get_class_weights()
     
     
     train_loader = torch.utils.data.DataLoader(

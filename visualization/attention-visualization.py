@@ -2,6 +2,8 @@ import torch
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
+sys.path.append('.')
 from models.vars import VARS
 from data.dataset import SoccerNetMVFoulDataset
 from config.config import Config

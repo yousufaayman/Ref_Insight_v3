@@ -1,0 +1,67 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 219 41% 30%; /* Dark Blue (#3a4d65) */
+    --foreground: 0 0% 100%; /* White */
+    
+    --card: 219 41% 35%;
+    --card-foreground: 0 0% 100%;
+    
+    --popover: 219 41% 35%;
+    --popover-foreground: 0 0% 100%;
+    
+    --primary: 335 85% 65%; /* Hot Pink */
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 219 41% 40%;
+    --secondary-foreground: 0 0% 100%;
+    
+    --muted: 219 41% 20%;
+    --muted-foreground: 0 0% 85%;
+    
+    --accent: 335 85% 65%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 335 85% 65%;
+    --input: 0 0% 100%;
+    --ring: 335 85% 65%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border selection:bg-primary/20 selection:text-white;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .glass-effect {
+    @apply bg-white/10 backdrop-blur-md border border-white/20 shadow-lg;
+  }
+  
+  .glass-card {
+    @apply bg-white/5 backdrop-blur-sm border border-primary/20 shadow-lg hover:bg-white/10 transition-colors;
+  }
+  
+  .glossy {
+    background: linear-gradient(
+      to bottom right,
+      rgba(255, 255, 255, 0.15),
+      rgba(255, 255, 255, 0.05)
+    );
+    @apply shadow-lg;
+  }
+}

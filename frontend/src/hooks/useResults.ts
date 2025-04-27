@@ -1,51 +1,111 @@
-
 import { useState } from 'react';
-import { FoulResult } from '@/components/ResultsCard';
+
+export interface OccurrenceResult {
+  id: string;
+  videos: {
+    path: string;
+    title: string;
+  }[];
+  actionClass: string;
+  severityRating: number;
+  classification: 'Yellow Card' | 'Red Card' | 'No Card';
+  timestamp: string;
+  perViewResults: {
+    videoPath: string;
+    foulProbabilities: number[];
+    offenseProbabilities: number[];
+    attentionScore: number[];
+  }[];
+  aggregatedPredictions: {
+    foulProbabilities: number[];
+    offenseProbabilities: number[];
+    attentionWeights: number[];
+  };
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 export const useResults = () => {
-  const [results, setResults] = useState<FoulResult[]>([]);
+  const [results, setResults] = useState<OccurrenceResult[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const processVideos = async (files: File[]) => {
-    const mockResults: FoulResult[] = files.map((file, index) => {
-      const severityOptions = [3, 5, 7, 8, 9];
-      const actionOptions = ['Tackle', 'Pushing', 'Holding', 'Elbowing', 'Sliding'];
-      const classificationOptions: ('Yellow Card' | 'Red Card' | 'No Card')[] = ['Yellow Card', 'Red Card', 'No Card'];
-      
-      const severity = severityOptions[Math.floor(Math.random() * severityOptions.length)];
-      let classification: 'Yellow Card' | 'Red Card' | 'No Card';
-      
-      if (severity <= 4) classification = 'No Card';
-      else if (severity <= 7) classification = 'Yellow Card';
-      else classification = 'Red Card';
-      
-      return {
-        id: `result-${Date.now()}-${index}`,
-        videoTitle: file.name,
-        actionClass: actionOptions[Math.floor(Math.random() * actionOptions.length)],
-        severityRating: severity,
-        classification,
-        timestamp: new Date().toISOString(),
-        videoBlob: file // Store the video file as a blob
-      };
-    });
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setResults(mockResults);
-    return mockResults;
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('videos', file);
+      });
+
+      const response = await fetch(`${API_BASE_URL}/process`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process videos');
+      }
+
+      const result: OccurrenceResult = await response.json();
+      setResults(prev => [result, ...prev]);
+      return result;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while processing videos';
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const visualizeVideo = async (videoPath: string, attentionScores: number[]) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/visualize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoPath,
+          attentionScores,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to visualize video');
+      }
+
+      const result = await response.json();
+      return result.visualizationPath;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while visualizing video';
+      setError(errorMessage);
+      throw err;
+    }
   };
   
   const clearResults = () => {
     results.forEach(result => {
-      if (result.videoBlob) {
-        URL.revokeObjectURL(URL.createObjectURL(result.videoBlob));
-      }
+      result.videos.forEach(video => {
+        if (video.path.startsWith('blob:')) {
+          URL.revokeObjectURL(video.path);
+        }
+      });
     });
     setResults([]);
   };
 
   return {
     results,
+    isProcessing,
+    error,
     processVideos,
+    visualizeVideo,
     clearResults,
   };
 };

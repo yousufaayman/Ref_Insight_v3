@@ -28,7 +28,6 @@ def parse_args():
     return parser.parse_args()
 
 def evaluate(model, data_loader, device, save_dir=None, visualize=False, num_visualizations=10):
-    """Evaluate model on a dataset"""
     model.eval()
     
     all_metrics = []

@@ -67,10 +67,6 @@ def extract_attention_rollout(
 
 
 def visualize_attention_rollout(model, video_batch, save_path=None):
-    """
-    Generates and overlays attention rollout heatmaps on the most representative frame (middle frame)
-    of each view clip. Saves one image per view.
-    """
 
     B, V, C, T, H, W = video_batch.shape
     mid = T // 2

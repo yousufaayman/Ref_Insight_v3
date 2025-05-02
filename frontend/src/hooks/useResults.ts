@@ -81,7 +81,7 @@ export const useResults = () => {
       }
 
       const result = await response.json();
-      return result.visualizationPath;
+      return result.visualizationPaths;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An error occurred while visualizing video';
       setError(errorMessage);

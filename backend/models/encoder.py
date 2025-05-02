@@ -30,12 +30,9 @@ class VideoEncoder(nn.Module):
     def forward(self, x):
         batch_size, num_views = x.shape[0], x.shape[1]
         
-        
         x = x.view(-1, *x.shape[2:])  
         
-        
         features = self.mvit(x)  
-        
         
         features = features.view(batch_size, num_views, -1)  
         

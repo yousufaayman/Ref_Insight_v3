@@ -9,62 +9,107 @@ from utils import VideoPreprocessor
 
 
 def load_model(model_path: str, device: torch.device) -> torch.nn.Module:
-    if not Path(model_path).exists():
-        raise FileNotFoundError(f"Model file not found at {model_path}")
+    try:
+        print(f"Loading model from: {model_path}")
+        print(f"Device: {device}")
+        
+        if not Path(model_path).exists():
+            raise FileNotFoundError(f"Model file not found at {model_path}")
 
-    model = VARS(pretrained=False, pooling_type="attention").to(device)
-    ckpt = torch.load(model_path, map_location=device)
-    model.load_state_dict(ckpt["model_state_dict"])
-    model.eval()
-    return model
+        print("Creating VARS model")
+        model = VARS(pretrained=False, pooling_type="attention").to(device)
+        
+        print("Loading checkpoint")
+        ckpt = torch.load(model_path, map_location=device)
+        
+        print("Loading state dict")
+        model.load_state_dict(ckpt["model_state_dict"])
+        
+        print("Setting model to eval mode")
+        model.eval()
+        
+        print("Model loaded successfully")
+        return model
+    except Exception as e:
+        print(f"Error loading model: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise
 
 
 def process_video(
-    video_path: str, model: torch.nn.Module, device: torch.device
+    video_paths: Union[str, List[str]], model: torch.nn.Module, device: torch.device
 ) -> Dict[str, Union[List[float], float, str]]:
     """
-    Process a single video file using the provided model.
+    Process multiple video files as different views of the same event using the provided model.
 
     Args:
-        video_path: Path to the video file
+        video_paths: List of paths to video files (different views of the same event)
         model: The loaded model
         device: The device to run inference on
 
     Returns:
         Dictionary containing foul probabilities, offense probabilities, and attention scores
     """
-    preprocessor = VideoPreprocessor()
-    video_tensor, timestamps = preprocessor.preprocess_video(video_path)
-    video_tensor = video_tensor.to(device)
+    try:
+        print(f"Starting video processing for {len(video_paths)} views")
+        print(f"Device: {device}")
+        print(f"Model device: {next(model.parameters()).device}")
+        
+        preprocessor = VideoPreprocessor()
+        print("Created VideoPreprocessor")
+        
+        # Process all videos together as multiple views
+        video_tensor = preprocessor.prepare_for_inference(video_paths)
+        print(f"Video tensor shape: {video_tensor.shape}")
+        print(f"Video tensor stats - min: {video_tensor.min():.3f}, max: {video_tensor.max():.3f}, mean: {video_tensor.mean():.3f}")
+        
+        video_tensor = video_tensor.to(device)
+        print("Moved tensor to device")
 
-    with torch.no_grad():
-        foul_probs, offense_probs, attention_scores = model(video_tensor)
+        with torch.no_grad():
+            print("Running model inference")
+            out = model(video_tensor)
+            print("Inference completed")
 
-    foul_probs = foul_probs.cpu().numpy()
-    offense_probs = offense_probs.cpu().numpy()
-    attention_scores = attention_scores.cpu().numpy()
+            # Get predictions and handle potential NaN values
+            foul_logits = out["foul_logits"]
+            offense_logits = out["offense_logits"]
+            attention_scores = out["attention_scores"]
 
-    max_foul_prob = np.max(foul_probs)
-    max_offense_prob = np.max(offense_probs)
+            print(f"Foul logits stats - min: {foul_logits.min():.3f}, max: {foul_logits.max():.3f}, mean: {foul_logits.mean():.3f}")
+            print(f"Offense logits stats - min: {offense_logits.min():.3f}, max: {offense_logits.max():.3f}, mean: {offense_logits.mean():.3f}")
+            print(f"Attention scores stats - min: {attention_scores.min():.3f}, max: {attention_scores.max():.3f}, mean: {attention_scores.mean():.3f}")
 
-    if max_offense_prob > 0.7:
-        classification = "Red Card"
-        severity_rating = 0.9
-    elif max_offense_prob > 0.5 or max_foul_prob > 0.7:
-        classification = "Yellow Card"
-        severity_rating = 0.6
-    else:
-        classification = "No Card"
-        severity_rating = 0.3
+            # Apply softmax and handle potential NaN values
+            foul_probs = torch.softmax(foul_logits, dim=1)
+            offense_probs = torch.softmax(offense_logits, dim=1)
+            
+            # Replace NaN values with zeros
+            foul_probs = torch.nan_to_num(foul_probs, nan=0.0)
+            offense_probs = torch.nan_to_num(offense_probs, nan=0.0)
+            attention_scores = torch.nan_to_num(attention_scores, nan=0.0)
 
-    return {
-        "foulProbabilities": foul_probs.tolist(),
-        "offenseProbabilities": offense_probs.tolist(),
-        "attentionScore": attention_scores.tolist(),
-        "classification": classification,
-        "severityRating": float(severity_rating),
-        "timestamps": timestamps,
-    }
+            # Convert to numpy arrays
+            foul_probs = foul_probs.cpu().numpy()
+            offense_probs = offense_probs.cpu().numpy()
+            attention_scores = attention_scores.cpu().numpy()
+
+            # Normalize probabilities if they sum to zero
+            foul_probs = foul_probs / np.maximum(np.sum(foul_probs, axis=1, keepdims=True), 1e-6)
+            offense_probs = offense_probs / np.maximum(np.sum(offense_probs, axis=1, keepdims=True), 1e-6)
+            attention_scores = attention_scores / np.maximum(np.sum(attention_scores), 1e-6)
+
+        return {
+            "foulProbabilities": foul_probs,
+            "offenseProbabilities": offense_probs,
+            "attentionScore": attention_scores,
+        }
+    except Exception as e:
+        print(f"Error in process_video: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise
 
 
 def predict(args):

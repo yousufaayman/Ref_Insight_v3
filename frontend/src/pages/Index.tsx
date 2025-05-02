@@ -1,8 +1,7 @@
-
 import { useState } from 'react';
 import Header from '@/components/Header';
 import FileUpload from '@/components/FileUpload';
-import ResultsSection from '@/components/ResultsSection';
+import { ResultsSection } from '@/components/ResultsSection';
 import { useResults } from '@/hooks/useResults';
 import { toast } from "sonner";
 

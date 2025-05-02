@@ -55,38 +55,58 @@ class VideoPreprocessor:
         return output_path, frame_timestamps.tolist()
 
     def prepare_for_inference(self, video_paths: Union[str, List[str]]) -> torch.Tensor:
+        """
+        Prepare multiple videos for inference by extracting frames and creating a tensor.
+
+        Args:
+            video_paths: List of paths to video files (different views of the same event)
+
+        Returns:
+            Tensor of shape [batch_size, num_views, channels, frames, height, width]
+        """
         if isinstance(video_paths, str):
             video_paths = [video_paths]
-
-        clips = []
-        for p in video_paths:
-            cap = cv2.VideoCapture(p)
-            if not cap.isOpened():
-                raise ValueError(f"Could not open video file: {p}")
-
-            cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-            idxs = np.linspace(0, cnt - 1, self.frames, dtype=int)
-            frames_list = []
-
-            for i in idxs:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, i)
-                _, img = cap.read()
-                img = cv2.resize(img, (self.resolution, self.resolution))
-                img = img[..., ::-1] / 255.0
-                frames_list.append(img)
-
-            cap.release()
-            clip = np.stack(frames_list, axis=0)
-            clips.append(clip)
-
-        arr = np.stack(clips, axis=0)
-        arr = np.transpose(arr, (0, 2, 1, 3, 4))
-        return torch.tensor(arr, dtype=torch.float32)
+            
+        print(f"Preparing {len(video_paths)} videos for inference")
+        
+        
+        video_tensors = []
+        for video_path in video_paths:
+            print(f"Processing video: {video_path}")
+            frames = self.extract_frames(video_path)
+            print(f"Extracted {len(frames)} frames")
+            
+            
+            processed_frames = []
+            for frame in frames:
+                frame = self.preprocess_frame(frame)
+                print(f"Processed frame shape: {frame.shape}")
+                processed_frames.append(frame)
+            
+            
+            video_tensor = torch.stack(processed_frames)
+            print(f"Video tensor shape after stacking frames: {video_tensor.shape}")
+            video_tensors.append(video_tensor)
+        
+        
+        final_tensor = torch.stack(video_tensors)
+        print(f"Final tensor shape after stacking videos: {final_tensor.shape}")
+        
+        
+        
+        final_tensor = final_tensor.permute(0, 2, 1, 3, 4)
+        print(f"Final tensor shape after permuting: {final_tensor.shape}")
+        
+        
+        final_tensor = final_tensor.unsqueeze(0)
+        print(f"Final tensor shape after adding batch dimension: {final_tensor.shape}")
+        
+        
+        final_tensor = final_tensor.contiguous()
+        
+        return final_tensor
 
     def validate_video(self, video_path: str) -> bool:
-        """
-        Validate if a video file meets the requirements
-        """
         try:
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
@@ -108,14 +128,41 @@ class VideoPreprocessor:
             return False
 
     def cleanup(self, video_path: str):
-        """
-        Clean up processed video file
-        """
         try:
             if os.path.exists(video_path):
                 os.remove(video_path)
         except Exception as e:
             print(f"Error cleaning up video: {e}")
+
+    def extract_frames(self, video_path: str) -> List[np.ndarray]:
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Could not open video file: {video_path}")
+
+        cnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        idxs = np.linspace(0, cnt - 1, self.frames, dtype=int)
+        frames = []
+
+        for i in idxs:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            _, img = cap.read()
+            img = cv2.resize(img, (self.resolution, self.resolution))
+            frames.append(img)
+
+        cap.release()
+        return frames
+
+    def preprocess_frame(self, frame: np.ndarray) -> torch.Tensor:
+        
+        frame = frame[..., ::-1] / 255.0
+        
+        
+        tensor = torch.tensor(frame, dtype=torch.float32)
+        
+        
+        tensor = tensor.permute(2, 0, 1)  
+        
+        return tensor
 
 
 if __name__ == "__main__":

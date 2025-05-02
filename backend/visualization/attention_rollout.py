@@ -53,12 +53,6 @@ def patch_attention_layer(model, layer_name):
 def extract_attention_rollout(
     model, video_batch, layer_name="mvit.blocks.15.attn"
 ):
-    print(f"Attempting to extract attention rollout from layer: {layer_name}")
-    print("Available layers:")
-    for name, _ in model.named_modules():
-        print(f"  {name}")
-
-    # Try different layer names based on the actual model structure
     layer_names_to_try = [
         layer_name,
         "encoder.mvit.blocks.15.attn",
@@ -74,25 +68,21 @@ def extract_attention_rollout(
     # First try to get the encoder
     if hasattr(model, 'encoder') and hasattr(model.encoder, 'mvit'):
         base_model = model.encoder.mvit
-        print("Found MViT model in encoder")
     else:
         base_model = model
-        print("Using base model")
 
     # Try to find any attention layer
     attention_layer = None
     for name, module in base_model.named_modules():
         if 'attn' in name.lower():
-            print(f"Found attention layer: {name}")
             attention_layer = module
             break
 
     if attention_layer is None:
-        print("No attention layer found in model")
+        print("Error: No attention layer found in model")
         return None
 
     for try_layer in layer_names_to_try:
-        print(f"\nTrying layer: {try_layer}")
         ATTENTION_CACHE.clear()
         try:
             patch_attention_layer(model, try_layer)
@@ -100,7 +90,6 @@ def extract_attention_rollout(
                 _ = model(video_batch)
 
             if try_layer in ATTENTION_CACHE:
-                print(f"Successfully captured attention from layer: {try_layer}")
                 attn = ATTENTION_CACHE[try_layer]
                 avg_attn = attn.mean(dim=1)
                 rollout = torch.eye(avg_attn.size(-1), device=avg_attn.device)
@@ -111,7 +100,6 @@ def extract_attention_rollout(
             continue
 
     # If no layer worked, try using the found attention layer directly
-    print("\nTrying direct attention layer access")
     try:
         ATTENTION_CACHE.clear()
         wrapped = MultiscaleAttentionWithCapture(attention_layer, identifier="direct_attn")
@@ -132,7 +120,6 @@ def extract_attention_rollout(
             _ = model(video_batch)
 
         if "direct_attn" in ATTENTION_CACHE:
-            print("Successfully captured attention from direct layer access")
             attn = ATTENTION_CACHE["direct_attn"]
             avg_attn = attn.mean(dim=1)
             rollout = torch.eye(avg_attn.size(-1), device=avg_attn.device)
@@ -141,62 +128,41 @@ def extract_attention_rollout(
     except Exception as e:
         print(f"Error with direct attention layer access: {str(e)}")
 
-    print("No attention map captured from any method.")
+    print("Error: No attention map captured from any method.")
     return None
 
 
 def visualize_attention_rollout(model, video_batch, save_path=None):
-    print("\nStarting visualization...")
-    print(f"Model structure:\n{model}")
-    
     B, V, C, T, H, W = video_batch.shape
     mid = T // 2
-    print(f"Video batch shape: {video_batch.shape}")
 
     for v in range(V):
-        print(f"\nProcessing view {v}")
         single = video_batch[:, v:v+1, :, :, :]
-        print(f"Single view tensor shape: {single.shape}")
 
         rollout = extract_attention_rollout(model, single)
         if rollout is None:
-            print(f"No attention rollout for view {v}")
+            print(f"Error: No attention rollout for view {v}")
             continue
 
-        print(f"Rollout shape: {rollout.shape}")
         rollout_vec = rollout[0, 1:]
-        print(f"Rollout vector shape: {rollout_vec.shape}")
-
         num_tokens = rollout_vec.shape[0]
         size = int(math.sqrt(num_tokens))
         while size * size > num_tokens:
             size -= 1
-        print(f"Reshaped size: {size}x{size}")
 
         try:
             heatmap = rollout_vec[:size * size].view(size, size).cpu().numpy()
-            print(f"Heatmap shape: {heatmap.shape}")
-
             heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
-            print(f"Normalized heatmap range: [{heatmap.min():.3f}, {heatmap.max():.3f}]")
 
             frame_t = single[0, 0, :, mid]
-            print(f"Frame tensor shape: {frame_t.shape}")
-
             mean = torch.tensor([0.485, 0.456, 0.406], device=frame_t.device).view(3, 1, 1)
             std = torch.tensor([0.229, 0.224, 0.225], device=frame_t.device).view(3, 1, 1)
             frame = (frame_t * std + mean).permute(1, 2, 0).cpu().numpy()
             frame = np.clip(frame, 0, 1)
-            print(f"Processed frame shape: {frame.shape}")
 
             heatmap_resized = cv2.resize(heatmap, (W, H), interpolation=cv2.INTER_LINEAR)
-            print(f"Resized heatmap shape: {heatmap_resized.shape}")
-
             colored = plt.get_cmap('jet')(heatmap_resized)[..., :3]
-            print(f"Colored heatmap shape: {colored.shape}")
-
             overlay = 0.4 * frame + 0.6 * colored
-            print(f"Final overlay shape: {overlay.shape}")
 
             plt.figure(figsize=(12, 12))
             plt.imshow(overlay)
@@ -208,15 +174,13 @@ def visualize_attention_rollout(model, video_batch, save_path=None):
                     base, ext = os.path.splitext(save_path)
                     view_path = f"{base}_view{v}{ext}"
                     os.makedirs(os.path.dirname(view_path), exist_ok=True)
-                    print(f"Saving visualization to: {view_path}")
                     plt.savefig(view_path, bbox_inches='tight', pad_inches=0, dpi=300)
-                    print(f"Successfully saved overlay to {view_path}")
                 except Exception as e:
                     print(f"Error saving visualization for view {v}: {str(e)}")
                     import traceback
                     print(f"Traceback: {traceback.format_exc()}")
             
-            plt.close()  # Close the figure to free memory
+            plt.close()
 
         except Exception as e:
             print(f"Error processing visualization for view {v}: {str(e)}")

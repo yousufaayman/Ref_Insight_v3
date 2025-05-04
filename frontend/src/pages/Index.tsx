@@ -55,7 +55,7 @@ const Index = () => {
       </main>
       <footer className="py-6 border-t border-primary/20 glass-effect mt-8">
         <div className="container text-center text-sm text-white/70">
-          &copy; {new Date().getFullYear()} REF_INISHGT | AI-Powered Football Analysis
+          &copy; {new Date().getFullYear()} REF_INSIGHT | AI-Powered Football Analysis
         </div>
       </footer>
     </div>

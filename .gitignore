@@ -188,3 +188,4 @@ dist-ssr
 #.idea/
 backend/models/RefInightmodel.pth
 backend/wheels/
+*.tar

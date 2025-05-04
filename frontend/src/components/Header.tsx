@@ -1,4 +1,3 @@
-
 import Logo from './Logo';
 
 const Header = () => {
@@ -8,7 +7,7 @@ const Header = () => {
         <div className="flex items-center space-x-4">
           <Logo />
           <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">
-            REF_INISHGT
+            REF_INSIGHT
           </h1>
         </div>
       </div>

@@ -23,7 +23,14 @@ export interface OccurrenceResult {
   };
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+// Get API URL from environment or use default
+const getApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  console.log('API Base URL from env:', envUrl); // Debug log
+  return envUrl || 'https://refinsight-api.yousufaayman.com';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export const useResults = () => {
   const [results, setResults] = useState<OccurrenceResult[]>([]);
@@ -40,13 +47,18 @@ export const useResults = () => {
         formData.append('videos', file);
       });
 
-      const response = await fetch(`${API_BASE_URL}/process`, {
+      console.log('Sending request to:', `${API_BASE_URL}/api/process`); // Debug log
+      const response = await fetch(`${API_BASE_URL}/api/process`, {
         method: 'POST',
         body: formData,
+        headers: {
+          'Accept': 'application/json',
+        },
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('API Error:', errorData); // Debug log
         throw new Error(errorData.error || 'Failed to process videos');
       }
 
@@ -54,6 +66,7 @@ export const useResults = () => {
       setResults(prev => [result, ...prev]);
       return result;
     } catch (err) {
+      console.error('Upload Error:', err); // Debug log
       const errorMessage = err instanceof Error ? err.message : 'An error occurred while processing videos';
       setError(errorMessage);
       throw err;
@@ -64,10 +77,12 @@ export const useResults = () => {
 
   const visualizeVideo = async (videoPath: string, attentionScores: number[]) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/visualize`, {
+      console.log('Sending visualization request to:', `${API_BASE_URL}/api/visualize`); // Debug log
+      const response = await fetch(`${API_BASE_URL}/api/visualize`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({
           videoPath,
@@ -77,12 +92,14 @@ export const useResults = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Visualization API Error:', errorData); // Debug log
         throw new Error(errorData.error || 'Failed to visualize video');
       }
 
       const result = await response.json();
       return result.visualizationPaths;
     } catch (err) {
+      console.error('Visualization Error:', err); // Debug log
       const errorMessage = err instanceof Error ? err.message : 'An error occurred while visualizing video';
       setError(errorMessage);
       throw err;

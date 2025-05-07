@@ -13,7 +13,18 @@ from pathlib import Path
 import torch
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "https://refinsight.yousufaayman.com",
+            "http://localhost:3000",
+            "http://localhost:8080"
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
 UPLOAD_FOLDER = os.environ.get("UPLOAD_DIR", "uploads")
 if not os.path.exists(UPLOAD_FOLDER):
